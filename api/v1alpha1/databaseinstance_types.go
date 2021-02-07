@@ -28,47 +28,72 @@ type DatabaseInstanceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	Postgres  *PostgresSpec  `json:"postgres,omitempty"`
+	// +optional
+	Postgres *PostgresSpec `json:"postgres,omitempty"`
+
+	// +optional
 	Clikhouse *ClikhouseSpec `json:"clickhouse,omitempty"`
 }
 
 type PostgresSpec struct {
-	SqlParams
-	AuthDB    string
-	AuthDBRef *ParamRef
+	SqlParams `json:",inline"`
+
+	// +optional
+	AuthDB string `json:"authDb,omitempty"`
+
+	// +optional
+	AuthDBRef *ParamRef `json:"authDbRef,omitempty"`
 }
 
 type ClikhouseSpec struct {
-	SqlParams
+	SqlParams `json:",inline"`
 }
 
 type SqlParams struct {
-	Username    string
-	UsernameRef *ParamRef
-	Password    string
-	PasswordRef *ParamRef
-	Host        string
-	HostRef     *ParamRef
-	Port        int
-	PortRef     *ParamRef
+	// +optional
+	Username string `json:"username,omitempty"`
+
+	// +optional
+	UsernameRef *ParamRef `json:"usernameRef,omitempty"`
+
+	// +optional
+	Password string `json:"password,omitempty"`
+
+	// +optional
+	PasswordRef *ParamRef `json:"passwordRef,omitempty"`
+
+	// +optional
+	Host string `json:"host,omitempty"`
+
+	// +optional
+	HostRef *ParamRef `json:"hostRef,omitempty"`
+
+	// +optional
+	Port int `json:"port,omitempty"`
+
+	// +optional
+	PortRef *ParamRef `json:"portRef,omitempty"`
 }
 
 type ParamRef struct {
 	// Kind of the referent.
 	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
 	// +optional
-	Kind string `json:"kind,omitempty" protobuf:"bytes,1,opt,name=kind"`
+	Kind string `json:"kind,omitempty"`
+
 	// Namespace of the referent.
 	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
 	// +optional
-	Namespace string `json:"namespace,omitempty" protobuf:"bytes,2,opt,name=namespace"`
+	Namespace string `json:"namespace,omitempty"`
+
 	// Name of the referent.
 	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
 	// +optional
-	Name string `json:"name,omitempty" protobuf:"bytes,3,opt,name=name"`
-	// Data  key.
+	Name string `json:"name,omitempty"`
+
+	// Data key.
 	// +optional
-	Key string
+	Key string `json:"key,omitempty"`
 }
 
 // DatabaseInstanceStatus defines the observed state of DatabaseInstance
