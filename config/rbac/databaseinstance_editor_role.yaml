@@ -1,0 +1,24 @@
+# permissions for end users to edit databaseinstances.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: databaseinstance-editor-role
+rules:
+- apiGroups:
+  - databaser.slamdev.github.com
+  resources:
+  - databaseinstances
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - databaser.slamdev.github.com
+  resources:
+  - databaseinstances/status
+  verbs:
+  - get

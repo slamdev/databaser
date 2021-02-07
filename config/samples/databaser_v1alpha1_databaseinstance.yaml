@@ -1,0 +1,7 @@
+apiVersion: databaser.slamdev.github.com/v1alpha1
+kind: DatabaseInstance
+metadata:
+  name: databaseinstance-sample
+spec:
+  # Add fields here
+  foo: bar

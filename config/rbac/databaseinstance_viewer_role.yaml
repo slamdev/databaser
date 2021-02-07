@@ -1,0 +1,20 @@
+# permissions for end users to view databaseinstances.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: databaseinstance-viewer-role
+rules:
+- apiGroups:
+  - databaser.slamdev.github.com
+  resources:
+  - databaseinstances
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - databaser.slamdev.github.com
+  resources:
+  - databaseinstances/status
+  verbs:
+  - get
