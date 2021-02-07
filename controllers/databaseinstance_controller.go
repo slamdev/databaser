@@ -18,6 +18,15 @@ package controllers
 
 import (
 	"context"
+	"fmt"
+	"github.com/slamdev/databaser/pkg"
+	"github.com/slamdev/databaser/pkg/clickhouse"
+	"github.com/slamdev/databaser/pkg/postgres"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"strconv"
+	"time"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -50,7 +59,35 @@ type DatabaseInstanceReconciler struct {
 func (r *DatabaseInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = r.Log.WithValues("databaseinstance", req.NamespacedName)
 
-	// your logic here
+	instance := &databaserv1alpha1.DatabaseInstance{}
+	err := r.Client.Get(ctx, req.NamespacedName, instance)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, err
+	}
+	if err := controllerutil.SetControllerReference(instance, instance, r.Scheme); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if instance.Spec.Clikhouse != nil && instance.Spec.Postgres != nil {
+		return ctrl.Result{}, r.updateErrorStatus(ctx, instance, "only one connection spec is allowed")
+	}
+
+	if instance.Spec.Clikhouse != nil {
+		if err := r.validateClickhouseConnection(ctx, *instance.Spec.Clikhouse); err != nil {
+			return ctrl.Result{}, r.updateErrorStatus(ctx, instance, err.Error())
+		}
+		return ctrl.Result{RequeueAfter: time.Second * 60}, r.updateConnectedStatus(ctx, instance)
+	}
+
+	if instance.Spec.Clikhouse != nil {
+		if err := r.validatePostgresConnection(ctx, *instance.Spec.Postgres); err != nil {
+			return ctrl.Result{}, r.updateErrorStatus(ctx, instance, err.Error())
+		}
+		return ctrl.Result{RequeueAfter: time.Second * 60}, r.updateConnectedStatus(ctx, instance)
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -60,4 +97,117 @@ func (r *DatabaseInstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&databaserv1alpha1.DatabaseInstance{}).
 		Complete(r)
+}
+
+func (r *DatabaseInstanceReconciler) updateErrorStatus(ctx context.Context, instance *databaserv1alpha1.DatabaseInstance, msg string) error {
+	instance.Status.Phase = "failed"
+	instance.Status.LastError = msg
+	return r.Client.Status().Update(ctx, instance)
+}
+
+func (r *DatabaseInstanceReconciler) updateConnectedStatus(ctx context.Context, instance *databaserv1alpha1.DatabaseInstance) error {
+	instance.Status.Phase = "connected"
+	instance.Status.LastError = ""
+	return r.Client.Status().Update(ctx, instance)
+}
+
+func (r *DatabaseInstanceReconciler) validateClickhouseConnection(ctx context.Context, spec databaserv1alpha1.ClikhouseSpec) error {
+	sqlParams, err := r.parseSqlParams(ctx, spec.SqlParams)
+	if err != nil {
+		return err
+	}
+	c, err := pkg.CreateClickhouseSqlConnection(ctx, clickhouse.Params{
+		User:     sqlParams.Username,
+		Password: sqlParams.Password,
+		Host:     sqlParams.Host,
+		Port:     sqlParams.Port,
+	})
+	if err != nil {
+		return err
+	}
+	return c.Close()
+}
+
+func (r *DatabaseInstanceReconciler) validatePostgresConnection(ctx context.Context, spec databaserv1alpha1.PostgresSpec) error {
+	sqlParams, err := r.parseSqlParams(ctx, spec.SqlParams)
+	if err != nil {
+		return err
+	}
+	if spec.AuthDBRef != nil {
+		if spec.AuthDB, err = r.getParamValue(ctx, *spec.AuthDBRef, "authdb"); err != nil {
+			return err
+		}
+	}
+	c, err := pkg.CreatePostgresSqlConnection(ctx, postgres.Params{
+		User:     sqlParams.Username,
+		Password: sqlParams.Password,
+		Host:     sqlParams.Host,
+		Port:     sqlParams.Port,
+		AuthDB:   spec.AuthDB,
+	})
+	if err != nil {
+		return err
+	}
+	return c.Close()
+}
+
+func (r *DatabaseInstanceReconciler) parseSqlParams(ctx context.Context, params databaserv1alpha1.SqlParams) (databaserv1alpha1.SqlParams, error) {
+	var err error
+	if params.HostRef != nil {
+		if params.Host, err = r.getParamValue(ctx, *params.HostRef, "hostname", "host"); err != nil {
+			return databaserv1alpha1.SqlParams{}, err
+		}
+	}
+	if params.PortRef != nil {
+		var port string
+		if port, err = r.getParamValue(ctx, *params.PortRef, "port"); err != nil {
+			return databaserv1alpha1.SqlParams{}, err
+		}
+		if params.Port, err = strconv.Atoi(port); err != nil {
+			return databaserv1alpha1.SqlParams{}, err
+		}
+	}
+	if params.UsernameRef != nil {
+		if params.Username, err = r.getParamValue(ctx, *params.UsernameRef, "user", "username"); err != nil {
+			return databaserv1alpha1.SqlParams{}, err
+		}
+	}
+	if params.PasswordRef != nil {
+		if params.Password, err = r.getParamValue(ctx, *params.PasswordRef, "pass", "password"); err != nil {
+			return databaserv1alpha1.SqlParams{}, err
+		}
+	}
+	return params, nil
+}
+
+func (r *DatabaseInstanceReconciler) getParamValue(ctx context.Context, ref databaserv1alpha1.ParamRef, fallbacks ...string) (string, error) {
+	var keys []string
+	if ref.Key != "" {
+		keys = []string{ref.Key}
+	} else {
+		keys = fallbacks
+	}
+
+	if ref.Kind == "ConfigMap" {
+		instance := &v1.ConfigMap{}
+		if err := r.Client.Get(ctx, client.ObjectKey{Namespace: ref.Namespace, Name: ref.Name}, instance); err != nil {
+			return "", err
+		}
+		for _, key := range keys {
+			if val, ok := instance.Data[key]; ok {
+				return val, nil
+			}
+		}
+	} else if ref.Kind == "Secret" {
+		instance := &v1.Secret{}
+		if err := r.Client.Get(ctx, client.ObjectKey{Namespace: ref.Namespace, Name: ref.Name}, instance); err != nil {
+			return "", err
+		}
+		for _, key := range keys {
+			if val, ok := instance.Data[key]; ok {
+				return string(val), nil
+			}
+		}
+	}
+	return "", fmt.Errorf("don't know how to handle %s kind", ref.Kind)
 }

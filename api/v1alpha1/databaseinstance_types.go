@@ -28,15 +28,58 @@ type DatabaseInstanceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of DatabaseInstance. Edit DatabaseInstance_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	Postgres  *PostgresSpec  `json:"postgres,omitempty"`
+	Clikhouse *ClikhouseSpec `json:"clickhouse,omitempty"`
+}
+
+type PostgresSpec struct {
+	SqlParams
+	AuthDB    string
+	AuthDBRef *ParamRef
+}
+
+type ClikhouseSpec struct {
+	SqlParams
+}
+
+type SqlParams struct {
+	Username    string
+	UsernameRef *ParamRef
+	Password    string
+	PasswordRef *ParamRef
+	Host        string
+	HostRef     *ParamRef
+	Port        int
+	PortRef     *ParamRef
+}
+
+type ParamRef struct {
+	// Kind of the referent.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+	// +optional
+	Kind string `json:"kind,omitempty" protobuf:"bytes,1,opt,name=kind"`
+	// Namespace of the referent.
+	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
+	// +optional
+	Namespace string `json:"namespace,omitempty" protobuf:"bytes,2,opt,name=namespace"`
+	// Name of the referent.
+	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+	// +optional
+	Name string `json:"name,omitempty" protobuf:"bytes,3,opt,name=name"`
+	// Data  key.
+	// +optional
+	Key string
 }
 
 // DatabaseInstanceStatus defines the observed state of DatabaseInstance
 type DatabaseInstanceStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	Phase     Phase  `json:"phase,omitempty"`
+	LastError string `json:"lastError,omitempty"`
 }
+
+type Phase string
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
