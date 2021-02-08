@@ -60,8 +60,7 @@ func (r *DatabaseInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	_ = r.Log.WithValues("databaseinstance", req.NamespacedName)
 
 	instance := &databaserv1alpha1.DatabaseInstance{}
-	err := r.Client.Get(ctx, req.NamespacedName, instance)
-	if err != nil {
+	if err := r.Client.Get(ctx, req.NamespacedName, instance); err != nil {
 		if errors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
@@ -73,23 +72,23 @@ func (r *DatabaseInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	if instance.Spec.Clikhouse != nil && instance.Spec.Postgres != nil {
 		return ctrl.Result{}, r.updateErrorStatus(ctx, instance, "only one connection spec is allowed")
+	} else if instance.Spec.Clikhouse != nil || instance.Spec.Postgres != nil {
+		return ctrl.Result{}, r.updateErrorStatus(ctx, instance, "at least one connection spec should be defined")
 	}
 
 	if instance.Spec.Clikhouse != nil {
 		if err := r.validateClickhouseConnection(ctx, *instance.Spec.Clikhouse); err != nil {
 			return ctrl.Result{}, r.updateErrorStatus(ctx, instance, err.Error())
 		}
-		return ctrl.Result{RequeueAfter: time.Second * 60}, r.updateConnectedStatus(ctx, instance)
 	}
 
 	if instance.Spec.Clikhouse != nil {
 		if err := r.validatePostgresConnection(ctx, *instance.Spec.Postgres); err != nil {
 			return ctrl.Result{}, r.updateErrorStatus(ctx, instance, err.Error())
 		}
-		return ctrl.Result{RequeueAfter: time.Second * 60}, r.updateConnectedStatus(ctx, instance)
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: time.Second * 60}, r.updateConnectedStatus(ctx, instance)
 }
 
 // SetupWithManager sets up the controller with the Manager.

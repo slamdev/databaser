@@ -18,6 +18,8 @@ package controllers
 
 import (
 	"context"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -50,7 +52,27 @@ type DatabaseReconciler struct {
 func (r *DatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = r.Log.WithValues("database", req.NamespacedName)
 
-	// your logic here
+	db := &databaserv1alpha1.Database{}
+	if err := r.Client.Get(ctx, req.NamespacedName, db); err != nil {
+		if errors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, err
+	}
+	if err := controllerutil.SetControllerReference(db, db, r.Scheme); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	instance := &databaserv1alpha1.DatabaseInstance{}
+	if err := r.Client.Get(ctx, client.ObjectKey{Namespace: "", Name: db.Spec.DatabaseInstanceRef.Name}, db); err != nil {
+		if errors.IsNotFound(err) {
+			return ctrl.Result{}, r.updateErrorStatus(ctx, db, "no corresponding database instance found")
+		}
+		return ctrl.Result{}, err
+	}
+	if instance.Status.Phase != "connected" {
+		return ctrl.Result{}, r.updateErrorStatus(ctx, db, "corresponding database is not initialized")
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -60,4 +82,16 @@ func (r *DatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&databaserv1alpha1.Database{}).
 		Complete(r)
+}
+
+func (r *DatabaseReconciler) updateErrorStatus(ctx context.Context, db *databaserv1alpha1.Database, msg string) error {
+	db.Status.Phase = "failed"
+	db.Status.LastError = msg
+	return r.Client.Status().Update(ctx, db)
+}
+
+func (r *DatabaseReconciler) updateConnectedStatus(ctx context.Context, db *databaserv1alpha1.Database) error {
+	db.Status.Phase = "connected"
+	db.Status.LastError = ""
+	return r.Client.Status().Update(ctx, db)
 }

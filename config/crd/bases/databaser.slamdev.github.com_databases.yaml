@@ -36,13 +36,34 @@ spec:
           spec:
             description: DatabaseSpec defines the desired state of Database
             properties:
-              foo:
-                description: Foo is an example field of Database. Edit Database_types.go
-                  to remove/update
+              cleanup:
+                type: boolean
+              databaseInstanceRef:
+                properties:
+                  name:
+                    type: string
+                required:
+                - name
+                type: object
+              properties:
+                additionalProperties:
+                  type: string
+                type: object
+              secretName:
                 type: string
+            required:
+            - databaseInstanceRef
             type: object
           status:
             description: DatabaseStatus defines the observed state of Database
+            properties:
+              lastError:
+                type: string
+              phase:
+                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                  of cluster Important: Run "make" to regenerate code after modifying
+                  this file'
+                type: string
             type: object
         type: object
     served: true
